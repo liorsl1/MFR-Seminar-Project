@@ -4,29 +4,27 @@ from mtcnn_cv2 import MTCNN
 import pandas as pd
 from streamlit import cli as stcli
 
+# Global Constants
 CLASSES = {3:'with mask',2:'without mask',1:'without mask',0:'without mask'}
-#
-haarFace_path = r"Models\HaarCascade\haarcascade_frontalface_default.xml"
+# Haar cascade detectors
 haarEye_path = r"Models\HaarCascade\haarcascade_eye.xml"
 haarMouth_path = r"Models\HaarCascade\Mouth.xml"
-cascadeFace_detector = cv2.CascadeClassifier(haarFace_path)
 cascadeEye_detector = cv2.CascadeClassifier(haarEye_path)
 cascadeMouth_detect = cv2.CascadeClassifier(haarMouth_path)
-#
+# MTCNN face detector
 detector = MTCNN(min_face_size=130)
-#
+# dlib face landmark detector
 landmark_predictor = dlib.shape_predictor("Models/DLIB/shape_predictor_68_face_landmarks.dat")
 dlib_detector = dlib.get_frontal_face_detector()
-#
+# Loading Custom mask detection model
 maskModelDir = 'Models/mask_detection/model.h5'
 mask_model = tf.keras.models.load_model(maskModelDir)
 mask_model.load_weights('Models/mask_detection/mask_weights.h5')
-#
+# Loading SOTA FaceArc Model, for face feature embeddings predictions
 FaceArcDir = 'Models/ArcFace/TT_efv2_b0_swish_GDC_arc_emb512_dr0_sgd_l2_5e4_bs512_ms1m_randaug_cutout_bnm09_bne1e4_cos16_batch_float16_E50_arc_sgd_LA_basic_agedb_30_epoch_17_0.977333.h5'
 m_FaceArc = tf.keras.models.load_model(FaceArcDir,compile = False)
 
-#collection = get_dbCollection()
-
+# Main App
 def run_MFR():
     # setting the web page
     st.set_page_config(
@@ -46,9 +44,7 @@ def run_MFR():
     # initializing the text_input for insert_persona
     if 'NAME' not in st.session_state:
         st.session_state.NAME = ''
-    steady_eyes = False
-    steady_face = False
-    message_string = None
+
     e_startTime = 0
     f_startTime = 0
     mask_sTime = 0
@@ -63,12 +59,9 @@ def run_MFR():
     x_face,y_face = 0,0 # face roi top left position
     landmark=[]
     detected_centroids = []
-    identified = False
     is_undetected = False
     PERSONA = None
     faces = []
-    nose_pos = []
-    #minimum_brightness = 0.6
     try:
         cap = cv2.VideoCapture(0)
         collection = get_dbCollection()
@@ -78,21 +71,13 @@ def run_MFR():
             dyn_img = dynamicBrightness(img,minimum_brightness=0.4)
             copy_img = dyn_img.copy()
             rgb_img = cv2.cvtColor(dyn_img,cv2.COLOR_BGR2RGB)
-            #gray_img = cv2.cvtColor(dyn_img,cv2.COLOR_BGR2GRAY)
             result = detector.detect_faces(rgb_img)
             if len(result) > 0:
                 boundingBox = result[0]['box']
-                # cv2.circle(copy_img,(keypoints['left_eye']), 2, (0,155,255), 2)
-                # cv2.circle(copy_img,(keypoints['right_eye']), 2, (0,155,255), 2)
-                # cv2.circle(copy_img,(keypoints['mouth_left']), 2, (0,155,255), 2)
-                # cv2.circle(copy_img,(keypoints['mouth_right']), 2, (0,155,255), 2)
                 faces = [boundingBox]
-                #nose_pos =  result[0]['keypoints']['nose']
-                #cv2.circle(copy_img,result[0]['keypoints']['nose'],6,(0,255,255),-1)
             else:
                 face_detectedTime = 0
-            #eyes = [[keypoints['left_eye'][0],keypoints['left_eye'][1],5,5],[keypoints['right_eye'][0],keypoints['right_eye'][0],5,5]]
-            eyes = cascadeEye_detector.detectMultiScale(rgb_img, 1.2, 6) # 1.3 - copy_img scale reduction, 5 - how many neighbors for each prediction, higher value is less detection yet higher quality.
+            eyes = cascadeEye_detector.detectMultiScale(rgb_img, 1.2, 6) # 1.2 - copy_img scale reduction, 6 - how many neighbors for each prediction, higher value is less detection yet higher quality.
             for (xf,yf,wf,hf) in faces:
                 if face_detectedTime == 0:
                     f_startTime = time.perf_counter()
@@ -104,10 +89,8 @@ def run_MFR():
 
         # if we got 2 eyes, draw them and check for steadiness
             if len(eyes) == 2:
-                # if steady_eyes == False:
                 if eyes_detectedTime == 0:
                     e_startTime = time.perf_counter()
-                    # steady_eyes = True
                 
                 for count,(eye_x, eye_y, eye_w, eye_h) in enumerate(eyes):
                     if count == 0:
@@ -124,9 +107,7 @@ def run_MFR():
                     # if eyes and face are detected for atleast 1 second (meaning detection is steady), and the eyes are in the face's range, proceed to estimate landmarks.      
                     eyes_detectedTime = time.perf_counter() - e_startTime
                     face_detectedTime = time.perf_counter() - f_startTime
-                    #print(eyes_detectedTime, face_detectedTime)
                     if eyes_detectedTime >= 0.4 and face_detectedTime >= 0.65 and eyes_in_range:
-                        #if(len(faces) > 0):
                         b_mouth = isMouthVisible(cascadeMouth_detect,face)
                         detected_centroids.append([x_centroid,y_centroid])
                         cv2.putText(copy_img, mask_msg, (xf,yf), cv2.FONT_HERSHEY_SIMPLEX, 0.6, REC_COLOR,2)
@@ -144,7 +125,6 @@ def run_MFR():
                                     mask_detTime = 0
                                     aligned_face, is_aligned = alignFace(dyn_img,eye_1,eye_2,detector)
                                     if is_aligned :
-                                        #cv2.imshow('aligned',aligned_face)
                                         face = aligned_face
                                     landmark = landmark_predictor(face,dlib.rectangle(0,0,face.shape[0],face.shape[1])) # face frame and it's dlib frame
                                     if(landmark.num_parts > 0):
@@ -154,10 +134,6 @@ def run_MFR():
                                         cropped_face = face[ 0 : last_nose_pt.y + 1, 0 : face.shape[1]]
                                         identified = True
                                         cv2.circle(copy_img,(last_nose_pt.x + x_face, last_nose_pt.y + 1 + y_face),5,(0,255,255),-1)
-                                        # eyes_detectedTime = 0
-                                        # face_detectedTime = 0
-                                        # f_startTime = 0
-                                        # e_startTime = 0
                                         CROPPED_WINDOW.image(cropped_face[:,:,::-1],caption = 'Identified Crop')
 
                                         embedding = predict_embedding(m_FaceArc,cropped_face)
@@ -190,13 +166,9 @@ def run_MFR():
                             mask_msg = CLASSES[2]
                             mask_detTime = 0
                 else:
-                    # eyes_detectedTime = 0
-                    # face_detectedTime = 0
-                    #print(prediction)
                     print("h")
             else:
                 eyes_detectedTime = 0
-                #face_detectedTime = 0
 
             FRAME_WINDOW.image(copy_img[:,:,::-1],caption = 'Live Feedback')
 

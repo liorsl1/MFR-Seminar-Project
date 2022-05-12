@@ -19,44 +19,24 @@ import streamlit as st
 INPUT_SIZE = (112,112)
 
 def predictMask(mask_model,img):
-    """rgb = cv2.cvtColor(img,cv2.COLOR_BGR2RGB) # !!! openCV uses BGR !!! need to switch to RGB !!!"""
-    #adjusted = cv2.convertScaleAbs(img, alpha=1.4, beta=10)
-    # Play with the saturation and hue for better results.
-    color_options = [[1.5,1.8],[1,1]]
-    satur_factor = color_options[1][0]
-    hue_factor = color_options[1][1]
+    # index == 0 : with mask, index != 1 without mask.
     IMG_DIM = (300,300)
     resized = cv2.resize(img,IMG_DIM,interpolation = cv2.INTER_AREA)
     img_array = cv2.cvtColor(resized,cv2.COLOR_BGR2GRAY)
-    # mean1, std1 = img_array.mean(), img_array.std()
-    # img_array = (img_array - mean1) / (std1)
-    # plt.imshow(img_array)
     img_array = img_array / 255
     img_array = np.expand_dims(img_array,axis=0)
-    #img_array = img_array/255.0
     prediction = mask_model.predict(img_array)
-    #print(prediction)
     index = np.argmax(prediction)
-    #print("Prediction",CLASSES[index], prediction[0][index])
     return index
 
-# index == 0 : with mask, index != 1 without mask.
-
 def dynamicBrightness(img,minimum_brightness = 0.4):
-    cols, rows = img.shape[0],img.shape[1]
+    # Dynamically change the brightness of the input from stream, for better performance
     brightness = np.average(norm(img, axis=2)) / np.sqrt(3) / 255
-    #print(brightasdfas
     ratio = brightness / minimum_brightness
-    #cv2.putText(img, f"brightness:{brightness}", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255),2)
-
-    #print(ratio)
     if ratio >= 1:
         return img
-
-# Otherwise, adjust brightness to get the target brightness
+    # Otherwise, if ratio is low, adjust brightness to get the target brightness
     return cv2.convertScaleAbs(img, alpha = 1/ratio, beta = 10)
-
-    # i only need the part after the face detection, that i will do in another function
 
 def isMouthVisible(cascadeMouth_detect,face):
     mouths = cascadeMouth_detect.detectMultiScale(face, 1.3, 3)
@@ -70,6 +50,8 @@ def euclidean_distance(a, b):
     return math.sqrt(((x2 - x1) * (x2 - x1)) + ((y2 - y1) * (y2 - y1)))
 
 def alignFace(img,eye_1,eye_2,mtcnn_detector):
+    # Align the face in respect to the eyes-plane, both eyes should be perpendicular to the x-axis of the image
+    # In order to get a face with no rotation/ tilt.
     try:
         img_raw = img.copy()
 
@@ -93,7 +75,6 @@ def alignFace(img,eye_1,eye_2,mtcnn_detector):
             point_3rd = (left_eye_x, right_eye_y)
             direction = 1 #rotate inverse clock direction
 
-        # you can directly use this line to convert the BGR image to RGB: [:,:,::-1]
         a = euclidean_distance(left_eye_center, point_3rd)
         b = euclidean_distance(right_eye_center, left_eye_center)
         c = euclidean_distance(right_eye_center, point_3rd)
@@ -113,21 +94,16 @@ def alignFace(img,eye_1,eye_2,mtcnn_detector):
         in a way that will fit the change of pixels in rotation.
         '''
         rot_img = np.array(rot_img.rotate(direction * angle,PIL.Image.BILINEAR))
-        #img_gray = cv2.cvtColor(rot_img, cv2.COLOR_BGR2GRAY)
         rgb_img = cv2.cvtColor(rot_img, cv2.COLOR_BGR2RGB)
         r_faces = mtcnn_detector.detect_faces(rgb_img)
-        #print(r_faces)
         face_x, face_y, face_w, face_h = r_faces[0]['box']
         rot_face = rot_img[int(face_y):int(face_y+face_h), int(face_x):int(face_x+face_w)]
         return rot_face,True
     except:
         return 0,False
 
-#difference between days for DB embeddings update.
-
-# today = datetime.today()
-# d4 = today.strftime("%Y-%m-%d")
 def days_between(d1, d2):
+    # difference between days for DB embeddings update.
     d1 = datetime.datetime.strptime(d1, "%Y-%m-%d")
     d2 = datetime.datetime.strptime(d2, "%Y-%m-%d")
     return abs((d2 - d1).days)
@@ -147,7 +123,6 @@ def predict_embedding(model,img):
     im_input = cv2.cvtColor(im_input,cv2.COLOR_BGR2RGB)
     im_input1 = (im_input.astype(float) - 127.5) / 127
     im_input1 = np.expand_dims(im_input1,axis=0)
-    #embedding = model.predict(np.expand_dims(im_input,axis=0))
     embedding = model.predict(im_input1)
     return embedding
 
@@ -166,10 +141,6 @@ def insert_persona(collection,embedding):
         collection.insert_one(person_entry)
     st.session_state.NAME = ''
 
-# def update_time(collection):
-#     persona_data = collection.find({})
-#     collection.update_many({},{"$set":{"date":str(datetime.date.today())}})
-
 def recognize_persona(collection,embedding,is_undetected,persona_msg,new_entry):
     DATE_ADDED = None
     persona = None
@@ -183,10 +154,6 @@ def recognize_persona(collection,embedding,is_undetected,persona_msg,new_entry):
         cos_dist = spatial.distance.cosine(data_embed,embedding)
         cos_dist = 1 - cos_dist
         print(cos_dist)
-        #euc_dist = np.sqrt(np.sum((data_embed - embedding)**2))
-        #iden_list[0].append(identity["date"])
-        #iden_list[1].append(cos_dist)
-        #iden_list[2].append(identity["name"])
         iden_list.append([identity["name"],cos_dist,identity["date"]])
     if not any(iden_list):
         # list is empty, no entries in db
@@ -195,11 +162,9 @@ def recognize_persona(collection,embedding,is_undetected,persona_msg,new_entry):
             insert_persona(collection,embedding,NAME)
     else:
         iden_list.sort(key=lambda x:x[1], reverse=True)
-        #cos_i = np.argmax(iden_list[1])
         cos_i = 0
         print(iden_list[cos_i])
         if iden_list[cos_i][1] > cos_thresh:
-        #print(iden_list[0][euc_i],iden_list[1][cos_i])
             print(iden_list[0],iden_list[1])
             persona = iden_list[cos_i][0]
             prob = iden_list[cos_i][1]
@@ -210,8 +175,7 @@ def recognize_persona(collection,embedding,is_undetected,persona_msg,new_entry):
             # calling insert_persona when entering the full name, where the input given is associated with the session state of the given key "NAME"
             new_entry.text_input(label='Enter Full Name',on_change=insert_persona, key = 'NAME', args = (collection,embedding))
             st.stop()
-            #insert_persona(collection,embedding,NAME)
     return persona, np.array(iden_list[:6])
     # if persona is None - try again -  2 times overall, after 2 times of no prediction -  add new image with name to the database
-    # returns 3 highest possible personas
+    # returns 6 highest possible personas
         
