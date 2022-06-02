@@ -1,5 +1,6 @@
 # MFR-Seminar-Project
 ### Masked Face Recognition - Seminar project as part of my B.sc. Computer Science Studies at the Academic College of Tel-Aviv Yafo, inspired by the recent epidemic.
+![det](detgif.gif)<img src="det2.png" width="380" height="400">
 #### <ins>The Goal</ins> : Identify faces covered by a mask in real-time, using deep learning and classical computer vision.
 #### <ins>The Approach</ins> : (picture below for visual explanation)
 1. Face detection using MTCNN, and Eyes detection using HaarCascade.
