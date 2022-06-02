@@ -15,6 +15,7 @@
 ### The Project Video Showcase : https://youtu.be/rSVMaz55bjA 
 ### Visual explanation of the overall algorithm's flow :
 ![algo](visual_explanation.png)
+![cert](https://user-images.githubusercontent.com/54400665/171635282-f7694313-dc64-467e-b7cb-ffec7454ea3b.png)
 ##### > Main application is in the folder "main_app"
 
 
